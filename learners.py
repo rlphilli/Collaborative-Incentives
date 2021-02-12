@@ -1,8 +1,6 @@
-from copy import deepcopy
 import random
 from random import sample, choices
 import numpy as np
-
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -59,42 +57,12 @@ class Net(nn.Module):
 
 
 class client:
-    def __init__(self, model_architecture, optimizer, loss, name):
-        """Instantiate a client model with relevant training information"""
-        self.model = model_architecture
-        self.old_model = None
-        self.opt = optimizer
-        self.loss = loss
+    def __init__(self, name):
+        """Instantiate a client model with relevant training information. The full repository
+        contains a more detailed client class that can train local epochs independently."""
         self.contrib = []
-        self.model.to('cuda')
         self.name = name
 
-    def snapshot_model(self):
-        self.old_model = deepcopy(self.model)
-
-    def train(self, x, y, model_state_dict):
-        """Train the client on a set of data and a given model dict. Only used in the
-        multi-batch federated algorithms"""
-        self.model.load_state_dict(model_state_dict)
-        if len(self.contrib) >= 1:
-          self.contrib.append(y.shape[0] + self.contrib[-1])
-        else:
-          self.contrib.append(y.shape[0])
-
-        self.model.train(True)
-        self.model.to('cuda')
-        self.opt.zero_grad()
-
-        out = self.model(x.to(self.device))
-        loss = self.loss(out, y)
-        loss.backward()
-        self.opt.step()
-
-    def set_model(self, model_dict):
-        self.model.load_state_dict(model_dict)
-
-    def model_restore(self):
-        self.model = self.old_model
 
 class Federated_Server:
     """
@@ -133,9 +101,7 @@ class Federated_Server:
         self.loss = loss
 
         for i in self.model_names:
-            local_model = deepcopy(self.model)
-            local_optimizer = optimizer(local_model.parameters(), lr=learning_rate)
-            local_client = client(local_model, local_optimizer, loss, name=i)
+            local_client = client(name=i)
             self.models[i] = {'client': local_client}
             self.models[i]['training points'] = self.model_indices[i]
             self.models[i]['validation points'] = self.model_indices[i]
