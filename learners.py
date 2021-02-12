@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 
 
 class training_array(Dataset):
@@ -71,16 +71,16 @@ class client:
 
     def snapshot_model(self):
         self.old_model = deepcopy(self.model)
-    
+
     def train(self, x, y, model_state_dict):
-        """Train the client on a set of data and a given model dict. Only used in the 
+        """Train the client on a set of data and a given model dict. Only used in the
         multi-batch federated algorithms"""
         self.model.load_state_dict(model_state_dict)
         if len(self.contrib) >= 1:
           self.contrib.append(y.shape[0] + self.contrib[-1])
         else:
           self.contrib.append(y.shape[0])
-        
+
         self.model.train(True)
         self.model.to('cuda')
         self.opt.zero_grad()
@@ -89,10 +89,10 @@ class client:
         loss = self.loss(out, y)
         loss.backward()
         self.opt.step()
-    
+
     def set_model(self, model_dict):
         self.model.load_state_dict(model_dict)
-        
+
     def model_restore(self):
         self.model = self.old_model
 
@@ -100,8 +100,8 @@ class Federated_Server:
     """
     Args:
         model (torch.nn) : pytorch model
-        dataset (torch.tensor) : 
-        y_array (torch.tensor) : 
+        dataset (torch.tensor) :
+        y_array (torch.tensor) :
         dataset_indices (list of list) :
         model_names (list of str) :
 
@@ -116,14 +116,14 @@ class Federated_Server:
                 raise Exception('Provided list of dataset indices should match the length of model names')
         else:
             self.model_names = range(len(dataset_indices))
-            
+
         self.model_indices = dict(zip(self.model_names, dataset_indices))
         self.y_array = y_array
-        
+
         if validation_indices:
             self.validation_indices = validation_indices
-            
-  
+
+
     def initialize_client_models(self, optimizer, loss, learning_rate):
         """Initialize client models"""
         sd = self.model.state_dict()
@@ -133,7 +133,6 @@ class Federated_Server:
         self.loss = loss
 
         for i in self.model_names:
-            print('initializing', i)
             local_model = deepcopy(self.model)
             local_optimizer = optimizer(local_model.parameters(), lr=learning_rate)
             local_client = client(local_model, local_optimizer, loss, name=i)
@@ -146,15 +145,15 @@ class Federated_Server:
 
     def federated_train(self):
         raise NotImplementedError
-        
+
     def __repr__(self):
         return "Federated server of " + str(self.model_names)
-    
+
     def evaluate_on_validation(self):
         """Evaluate each model on a list of indices that correspond to that model's validation set"""
         for model_name, validation_idxs in zip(self.model_names, self.validation_indices):
             validation_idxs = sample(validation_idxs, min(200, len(validation_idxs)))
-            dataset_to_eval = self.dataset[validation_idxs] 
+            dataset_to_eval = self.dataset[validation_idxs]
             y_to_eval = torch.from_numpy(self.y_array[validation_idxs])
             dataset_to_eval = torch.from_numpy(dataset_to_eval).float()
             model_to_eval = self.model
@@ -166,23 +165,23 @@ class Federated_Server:
 
             loss = self.loss(out.to('cpu'), y_to_eval.to('cpu'))
             accuracy = torch.argmax(F.softmax(out, dim=1),1)
-            
+
             accuracy = torch.eq(accuracy.to('cpu'), y_to_eval)
 
             accuracy = torch.sum(accuracy) / len(validation_idxs)
 
             self.models[model_name]['validation loss'].append(loss)
-            self.models[model_name]['validation accuracy'].append(accuracy) 
+            self.models[model_name]['validation accuracy'].append(accuracy)
 
 
 class Blum_Avg(Federated_Server):
-    """      
+    """
     Args:
         model (torch.nn) : pytorch model
-        dataset (torch.tensor)  
-        y_array (torch.tensor) 
-        dataset_indices (list of list) 
-        model_names (list of str) 
+        dataset (torch.tensor)
+        y_array (torch.tensor)
+        dataset_indices (list of list)
+        model_names (list of str)
 
     """
     def __init__(self, model, dataset, dataset_indices, y_array, validation_indices, model_names = None):
@@ -197,13 +196,10 @@ class Blum_Avg(Federated_Server):
               test_results = [0 for _ in self.models]
             else:
               test_results = [self.models[i]['validation accuracy'][-1].item() for i in self.models]
-            tt1 = deepcopy(test_results)
-
             test_results = [4 if i<=(1-epsilon) else 1 for i in test_results]
             self.tr = set(test_results) == {1}
-
             self.weights = self.weights*test_results/np.linalg.norm(self.weights*test_results, 1)
-            samples_to_take = self.weights*batch_size*local_batches*len(self.models) 
+            samples_to_take = self.weights*batch_size*local_batches*len(self.models)
             samples_to_take = np.round(samples_to_take).tolist()
             assert(local_batches == 1)
             assert( np.abs(1- np.sum(self.weights) <= 0.1))
@@ -234,27 +230,22 @@ class Blum_Avg(Federated_Server):
 
 
 class FEDERATOR_Avg(Federated_Server):
-    """      
+    """
     Args:
         model (torch.nn) : pytorch model
-        dataset (torch.tensor)  
-        y_array (torch.tensor) 
-        dataset_indices (list of list) 
-        model_names (list of str) 
+        dataset (torch.tensor)
+        y_array (torch.tensor)
+        dataset_indices (list of list)
+        model_names (list of str)
 
     """
     def __init__(self, model, dataset, dataset_indices, y_array, validation_indices, model_names = None):
-        print('hereitis', len(dataset), len(dataset_indices), len(validation_indices))
-        print(len(model_names))
         super().__init__(model, dataset, dataset_indices, y_array, model_names, validation_indices)
 
     def initialize_weights(self, weights=None ):
       self.weights = weights
 
     def federated_train(self, batch_size, epochs, local_batches, eval_models = False, epsilon=0.3):
-        """"""
-        # 
-
         for eeee in range(epochs):
             # self.evaluate_on_validation()
             # Get last model results from above evaluation
@@ -265,7 +256,7 @@ class FEDERATOR_Avg(Federated_Server):
 
             self.tr = set(test_results) == {1}
 
-            samples_to_take = self.weights*batch_size*local_batches*len(self.models) 
+            samples_to_take = self.weights*batch_size*local_batches*len(self.models)
             samples_to_take = np.round(samples_to_take).tolist()
             assert(local_batches == 1)
             assert( np.abs(1- np.sum(self.weights) <= 0.1))

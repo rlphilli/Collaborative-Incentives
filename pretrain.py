@@ -4,11 +4,10 @@ import torch.nn as nn
 import torch.optim as optim
 
 from learners import Net, FEDERATOR_Avg, label_array, training_array
-from emnist_infrastructure import emnist_data
 
 
-
-def pretrain_model(pl_file_name):
+def pretrain_model(emnist_data
+):
   """Pre-train a net object."""
   FB = FEDERATOR_Avg(Net(), training_array(emnist_data), [list(range(len(emnist_data) - 30000, len(emnist_data)))],
                      label_array(emnist_data),
@@ -20,6 +19,4 @@ def pretrain_model(pl_file_name):
   for i in range(40):
     FB.federated_train(64, 1, 1, eval_models=True,  epsilon=0.1)
 
-
-  with open(pl_file_name, 'wb') as f:
-    pl.dump(FB.model, f)
+  return FB.model
